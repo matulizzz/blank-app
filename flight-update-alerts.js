@@ -341,7 +341,13 @@ function FLIGHT_UPDATE_STATUS(flightDate, stdTime, updatedIndicator, todayDate, 
       return "ATNAUJINTI";
     } else {
       const hoursRemaining = updateHour - currentHours;
-      return "ATNAUJINTI UZ " + hoursRemaining.toFixed(1) + " VAL";
+
+      // Convert decimal hours to HH:MM format
+      const hours = Math.floor(hoursRemaining);
+      const minutes = Math.round((hoursRemaining - hours) * 60);
+      const timeStr = String(hours).padStart(2, '0') + ':' + String(minutes).padStart(2, '0');
+
+      return "ATNAUJINTI UZ " + timeStr;
     }
 
   } catch (error) {
