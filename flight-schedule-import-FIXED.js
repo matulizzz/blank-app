@@ -476,20 +476,22 @@ function formatSheetDate(dateStr) {
       date = new Date(dateStr);
     }
 
-    // Format as DDMMM (like "29SEP")
+    // Format as DDMMMYY (like "17NOV25", "19NOV26")
     const monthNames = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN',
                         'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
     const day = String(date.getDate()).padStart(2, '0');
     const month = monthNames[date.getMonth()];
+    const year = String(date.getFullYear()).slice(-2); // Get last 2 digits of year
 
-    return `${day}${month}`;
+    return `${day}${month}${year}`;
 
   } catch (error) {
     Logger.log(`Error formatting date: ${error}`);
     const now = new Date();
     const monthNames = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN',
                         'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
-    return `${String(now.getDate()).padStart(2, '0')}${monthNames[now.getMonth()]}`;
+    const year = String(now.getFullYear()).slice(-2);
+    return `${String(now.getDate()).padStart(2, '0')}${monthNames[now.getMonth()]}${year}`;
   }
 }
 
@@ -1130,7 +1132,7 @@ function cleanupOldSheets() {
           }
         }
       }
-      // Check regular sheets (like "28SEP", "29SEP")
+      // Check regular sheets (like "17NOV25", "19NOV26")
       else {
         const createdDateStr = scriptProperties.getProperty(`sheet_${sheetName}`);
         if (createdDateStr) {
