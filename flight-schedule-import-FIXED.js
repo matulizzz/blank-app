@@ -1641,3 +1641,113 @@ function testUrgentFlightAlerts() {
   Logger.log("If flights were found, an email was sent to: " + ALERT_CONFIG.emailRecipient);
   Logger.log("═══════════════════════════════════════");
 }
+
+// ============================================
+// CUSTOM FUNCTION: Calculate Flight Update Status
+// ============================================
+/**
+ * Calculates when a flight plan needs to be updated
+ * Handles overnight flights correctly
+ *
+ * @param {string|Date} flightDate - Flight date (e.g., "17-Nov-25")
+ * @param {number|Date} stdTime - Scheduled departure time
+ * @param {string|Date} todayDate - Current date
+ * @param {number|Date} currentTime - Current time
+ * @return {string} Update status
+ * @customfunction
+ */
+function FLIGHT_UPDATE_STATUS(flightDate, stdTime, todayDate, currentTime) {
+  try {
+    // Handle empty or invalid inputs
+    if (!flightDate || !stdTime) return ":)";
+
+    // Convert dates to Date objects
+    const fDate = new Date(flightDate);
+    const tDate = new Date(todayDate);
+
+    // Calculate days difference
+    const daysDiff = Math.floor((fDate - tDate) / (1000 * 60 * 60 * 24));
+
+    // Convert times to hours (handle both time formats)
+    let stdHours = 0;
+    let currentHours = 0;
+
+    if (typeof stdTime === 'number') {
+      stdHours = stdTime * 24; // Excel time format
+    } else if (stdTime instanceof Date) {
+      stdHours = stdTime.getHours() + stdTime.getMinutes() / 60;
+    }
+
+    if (typeof currentTime === 'number') {
+      currentHours = currentTime * 24;
+    } else if (currentTime instanceof Date) {
+      currentHours = currentTime.getHours() + currentTime.getMinutes() / 60;
+    }
+
+    // Calculate total hours until departure
+    const hoursUntil = (daysDiff * 24) + (stdHours - currentHours);
+
+    // URGENT: Less than 3 hours
+    if (hoursUntil < 3 && hoursUntil >= 0) {
+      return "ATNAUJINTI DABAR!!!!";
+    }
+
+    // TOO FAR: More than 24 hours or not today
+    if (hoursUntil > 24 || daysDiff > 0) {
+      return "TOLI";
+    }
+
+    // Determine update window based on STD time
+    let updateHour;
+    if (stdHours >= 7.167 && stdHours < 13.167) { // 07:10-13:10
+      updateHour = 4.083; // 04:05
+    } else if (stdHours >= 13.167 && stdHours < 19.167) { // 13:10-19:10
+      updateHour = 10.083; // 10:05
+    } else if (stdHours >= 19.167) { // 19:10-00:00
+      updateHour = 16.083; // 16:05
+    } else if (stdHours < 1.167) { // 00:00-01:10
+      updateHour = 16.083; // 16:05
+    } else { // 01:10-07:10
+      updateHour = 22.083; // 22:05
+    }
+
+    // Check if we're in update window
+    if (currentHours >= updateHour) {
+      return "ATNAUJINTI";
+    } else {
+      const hoursRemaining = updateHour - currentHours;
+      return "ATNAUJINTI UZ " + hoursRemaining.toFixed(1) + " VAL";
+    }
+
+  } catch (error) {
+    return "ERROR: " + error.toString();
+  }
+}
+
+// ============================================
+// CUSTOM FUNCTION: Simple Hours Until Departure
+// ============================================
+/**
+ * Calculates hours until flight departure (handles overnight correctly)
+ *
+ * @param {string|Date} flightDate - Flight date
+ * @param {number|Date} stdTime - Scheduled departure time
+ * @param {string|Date} todayDate - Current date
+ * @param {number|Date} currentTime - Current time
+ * @return {number} Hours until departure
+ * @customfunction
+ */
+function HOURS_UNTIL_DEPARTURE(flightDate, stdTime, todayDate, currentTime) {
+  try {
+    const fDate = new Date(flightDate);
+    const tDate = new Date(todayDate);
+    const daysDiff = Math.floor((fDate - tDate) / (1000 * 60 * 60 * 24));
+
+    let stdHours = typeof stdTime === 'number' ? stdTime * 24 : stdTime.getHours() + stdTime.getMinutes() / 60;
+    let currentHours = typeof currentTime === 'number' ? currentTime * 24 : currentTime.getHours() + currentTime.getMinutes() / 60;
+
+    return (daysDiff * 24) + (stdHours - currentHours);
+  } catch (error) {
+    return -1;
+  }
+}
