@@ -12,7 +12,7 @@
 const ALERT_CONFIG = {
   enabled: true,
   urgentKeyword: "ATNAUJINTI DABAR!!!!", // Status that triggers urgent alert
-  statusColumn: "P", // Column where your formula shows the status
+  statusColumn: "K", // Column where your formula shows the status
   emailRecipient: "matas.miltakis@heston.aero",
   maxAlertsPerCheck: 10, // Maximum flights to include in one email
   checkIntervalMinutes: 5 // How often to check (5, 10, 15, or 30 minutes recommended)
@@ -51,7 +51,7 @@ function checkUrgentFlightUpdates() {
       const now = new Date();
       sheet.getRange('N3').setValue(now);
 
-      // THEN: Get status column (column P) - formulas will have just recalculated
+      // THEN: Get status column (column K) - formulas will have just recalculated
       const statusCol = columnLetterToIndex(ALERT_CONFIG.statusColumn);
       const statusRange = sheet.getRange(2, statusCol, lastRow - 1, 1).getValues();
       const flightData = sheet.getRange(2, 1, lastRow - 1, 7).getValues(); // A-G
