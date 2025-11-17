@@ -109,44 +109,39 @@ const CONFIG = {
 };
 
 // ============================================
-// CREATE CUSTOM MENU (runs automatically when sheet opens)
+// CREATE CUSTOM MENU
 // ============================================
 function onOpen() {
-  const ui = SpreadsheetApp.getUi();
-  ui.createMenu('Flight Schedule Tools')
-    .addItem('▶️ Run Import Now', 'manualImport')
+  SpreadsheetApp.getUi()
+    .createMenu('Flight Schedule Tools')
+    .addItem('▶️ Run Import Now', 'runImportNow')
     .addToUi();
-
-  Logger.log("Custom menu created");
 }
 
 // ============================================
-// MANUAL IMPORT (triggered from menu)
+// RUN IMPORT NOW - Manual trigger from menu
 // ============================================
-function manualImport() {
+function runImportNow() {
   const ui = SpreadsheetApp.getUi();
 
-  // Show confirmation dialog
-  const response = ui.alert(
+  // Ask for confirmation
+  const confirm = ui.alert(
     'Run Import Now',
-    'This will check for new flight schedule emails and import them.\n\nDo you want to continue?',
+    'Check for new flight schedule emails and import them?',
     ui.ButtonSet.YES_NO
   );
 
-  if (response == ui.Button.YES) {
-    try {
-      // Show processing message
-      ui.alert('Processing...', 'Checking for new emails. This may take a moment.', ui.ButtonSet.OK);
+  // Exit if user cancels
+  if (confirm !== ui.Button.YES) {
+    return;
+  }
 
-      // Run the import
-      processFlightScheduleEmails();
-
-      // Show success message
-      ui.alert('Import Complete', 'Flight schedule import completed successfully!\n\nCheck the spreadsheet for new sheets.', ui.ButtonSet.OK);
-
-    } catch (error) {
-      ui.alert('Import Failed', 'An error occurred during import:\n\n' + error.toString() + '\n\nCheck the script logs for details.', ui.ButtonSet.OK);
-    }
+  // Run the import and show result
+  try {
+    processFlightScheduleEmails();
+    ui.alert('✅ Import Complete', 'Flight schedules imported successfully!', ui.ButtonSet.OK);
+  } catch (error) {
+    ui.alert('❌ Import Failed', error.toString(), ui.ButtonSet.OK);
   }
 }
 
