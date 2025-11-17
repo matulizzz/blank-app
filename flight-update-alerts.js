@@ -137,44 +137,86 @@ function sendUrgentUpdateAlert(flights) {
 }
 
 // ============================================
-// SETUP HOURLY URGENT UPDATE ALERTS
+// FORCE SHEET REFRESH - Updates time cell to trigger recalculation
+// ============================================
+function forceSheetRefresh() {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sheets = ss.getSheets();
+
+    // Update the current time cell in each sheet to force formula recalculation
+    sheets.forEach(sheet => {
+      const sheetName = sheet.getName();
+
+      // Skip template and old sheets
+      if (sheetName === CONFIG.templateSheetName || sheetName.includes('_old_')) {
+        return;
+      }
+
+      // Update cell N3 with current time (forces FLIGHT_UPDATE_STATUS to recalculate)
+      try {
+        const now = new Date();
+        sheet.getRange('N3').setValue(now);
+      } catch (error) {
+        // Silently continue if sheet doesn't have this cell
+      }
+    });
+
+    Logger.log("Sheet refresh completed - formulas will recalculate");
+  } catch (error) {
+    Logger.log(`Error refreshing sheets: ${error.toString()}`);
+  }
+}
+
+// ============================================
+// SETUP 5-MINUTE URGENT UPDATE ALERTS
 // ============================================
 function setupUrgentUpdateAlerts() {
   // Delete existing urgent update triggers
   const triggers = ScriptApp.getProjectTriggers();
   triggers.forEach(trigger => {
-    if (trigger.getHandlerFunction() === 'checkUrgentFlightUpdates') {
+    if (trigger.getHandlerFunction() === 'checkUrgentFlightUpdates' ||
+        trigger.getHandlerFunction() === 'forceSheetRefresh') {
       ScriptApp.deleteTrigger(trigger);
     }
   });
 
-  // Create new hourly trigger
+  // Create new 5-minute trigger for alert checking
   ScriptApp.newTrigger('checkUrgentFlightUpdates')
     .timeBased()
-    .everyHours(1)
+    .everyMinutes(5)
     .create();
 
-  Logger.log("✅ Hourly urgent update alert trigger created");
+  // Create 5-minute trigger for sheet refresh (forces formula recalculation)
+  ScriptApp.newTrigger('forceSheetRefresh')
+    .timeBased()
+    .everyMinutes(5)
+    .create();
+
+  Logger.log("✅ 5-minute urgent update alert triggers created");
 
   // Send confirmation email
   const recipient = ALERT_CONFIG.emailRecipient;
   const subject = "✅ Flight Plan Update Alerts Activated";
   const body = `Your urgent flight plan update alert system is now active!\n\n` +
-    `⏰ Check frequency: Every hour\n` +
+    `⏰ Check frequency: Every 5 minutes\n` +
+    `🔄 Formula refresh: Every 5 minutes (automatic)\n` +
     `🚨 Alert trigger: "${ALERT_CONFIG.urgentKeyword}"\n` +
     `📧 Notifications sent to: ${recipient}\n` +
     `📊 Status column monitored: Column ${ALERT_CONFIG.statusColumn}\n` +
     `⚠️  Max alerts per email: ${ALERT_CONFIG.maxAlertsPerCheck} flights\n\n` +
     `─────────────────────────────────────────\n\n` +
     `How it works:\n` +
-    `• System checks all flight sheets every hour\n` +
+    `• System checks all flight sheets every 5 minutes\n` +
+    `• Formulas recalculate automatically every 5 minutes\n` +
     `• When status shows "${ALERT_CONFIG.urgentKeyword}"\n` +
     `• You receive an email with flight details\n` +
     `• Alert means: Update flight plan NOW (within 3h of departure)\n\n` +
-    `Your formula continues to calculate update times based on:\n` +
+    `Your custom function calculates update times based on:\n` +
     `• Flight plans must be updated STD-4 hours\n` +
     `• Different update windows based on departure time\n` +
-    `• All times in UTC timezone\n\n` +
+    `• All times in UTC timezone\n` +
+    `• Handles overnight flights correctly\n\n` +
     `─────────────────────────────────────────\n\n` +
     `To disable alerts: Set ALERT_CONFIG.enabled = false\n` +
     `To change email: Update ALERT_CONFIG.emailRecipient\n` +

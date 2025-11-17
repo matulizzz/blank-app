@@ -1403,10 +1403,12 @@ function debugCheckLastEmail() {
 // 3. Save it as a separate file in your project
 //
 // The alert system includes:
-// - checkUrgentFlightUpdates() - Hourly monitoring
-// - setupUrgentUpdateAlerts() - Trigger setup
+// - checkUrgentFlightUpdates() - Checks every 5 minutes
+// - forceSheetRefresh() - Updates time cell every 5 minutes to force formula recalculation
+// - setupUrgentUpdateAlerts() - Creates both triggers
 // - testUrgentFlightAlerts() - Manual testing
-// - FLIGHT_UPDATE_STATUS() - Custom function for sheets
+// - FLIGHT_UPDATE_STATUS() - Custom function for sheets (recalculates automatically)
 // - HOURS_UNTIL_DEPARTURE() - Helper function
 //
+// With 5-minute checks, your formulas stay fresh and alerts are sent quickly.
 // Both files work together in the same Google Apps Script project.
