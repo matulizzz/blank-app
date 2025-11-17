@@ -110,8 +110,8 @@ If `debugCheckLastEmail()` shows headers not in the alias list:
 After running an import, verify:
 
 - [ ] Column A = Flight Date (LegDate)
-- [ ] Column B = Aircraft Registration (like "G-ABCD", "N12345")
-- [ ] Column C = Flight Code (like "BA123", "LH456")
+- [ ] Column B = Flight Code (like "BA123", "LH456") ← Code from CSV
+- [ ] Column C = Aircraft Registration (like "G-ABCD", "N12345") ← VehicleRegistration from CSV
 - [ ] Column D = Departure Airport
 - [ ] Column E = Arrival Airport
 - [ ] Column F = Departure Time
@@ -119,11 +119,11 @@ After running an import, verify:
 
 ## Common Header Variations Already Supported
 
-### Aircraft Registration (Column B):
-- VehicleReg, Vehicle Reg, Registration, Reg, Aircraft, AC Reg, Tail, Tail Number
-
-### Flight Code (Column C):
+### Flight Code (Column B):
 - Code, Flight Code, Flight, Flight Number, Flight No
+
+### Aircraft Registration (Column C):
+- VehicleReg, Vehicle Reg, Registration, Reg, Aircraft, AC Reg, Tail, Tail Number
 
 ### Date (Column A):
 - LegDate, Leg Date, Date, Flight Date
@@ -170,9 +170,8 @@ If your email/CSV actually has Registration in column 3 and Code in column 2:
 ## Technical Notes
 
 ### Sorting
-- **Column B (VehicleReg)** is used for sorting, not Column C (Code)
-- Comment in original code said "Sort by Code" but actually sorts by column 2 (VehicleReg)
-- This is intentional - keeps flights grouped by aircraft
+- **Column B (Code)** is used for sorting - flights are sorted by flight code A-Z
+- This sorts flights alphabetically by flight number (BA123, LH456, etc.)
 
 ### Column Mapping Flow
 ```
@@ -180,8 +179,12 @@ Source CSV/Email Headers
   ↓ (normalize + match aliases)
 Flight Data Object { VehicleReg: "G-ABCD", Code: "BA123", ... }
   ↓ (use CONFIG.columnMapping)
-Sheet Columns { B: "G-ABCD", C: "BA123", ... }
+Sheet Columns { B: "BA123", C: "G-ABCD", ... }
 ```
+
+**Corrected Mapping:**
+- Code (BA123) → Column B
+- VehicleReg (G-ABCD) → Column C
 
 The fix ensures step 1 (matching) is accurate, so the rest flows correctly.
 
@@ -192,16 +195,16 @@ Please check your source data and answer these:
 1. **What are the actual column headers in your email/CSV?**
    - Run `debugCheckLastEmail()` to find out
 
-2. **Which column should contain aircraft registration?**
-   - Examples: "G-ABCD", "N12345", "LY-ABC"
+2. **Which column should contain flight code?**
+   - Examples: "BA123", "LH456", "AA789"
    - This should go to Column B
 
-3. **Which column should contain flight code?**
-   - Examples: "BA123", "LH456", "AA789"
+3. **Which column should contain aircraft registration?**
+   - Examples: "G-ABCD", "N12345", "LY-ABC"
    - This should go to Column C
 
 4. **Are they currently being switched?**
-   - If Column B shows "BA123" instead of "G-ABCD", they're switched
+   - If Column B shows "G-ABCD" instead of "BA123", they're switched
    - The fix should resolve this
 
 ## Contact

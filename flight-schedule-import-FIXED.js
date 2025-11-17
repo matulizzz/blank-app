@@ -37,8 +37,8 @@ const CONFIG = {
   // KEY = field name, VALUE = target column in sheet
   columnMapping: {
     LegDate: "A",        // Flight date
-    VehicleReg: "B",     // Aircraft registration (e.g., "G-ABCD", "N12345")
-    Code: "C",           // Flight code (e.g., "BA123", "LH456")
+    Code: "B",           // Flight code (e.g., "BA123", "LH456") → goes to Column B
+    VehicleReg: "C",     // Aircraft registration (e.g., "G-ABCD", "N12345") → goes to Column C
     DepString: "D",      // Departure airport
     ArrString: "E",      // Arrival airport
     STDHHMM: "F",        // Scheduled departure time
@@ -691,7 +691,7 @@ function sortDataByColumnB(sheet, startRow, numRows) {
   if (numRows === 0) return;
 
   try {
-    Logger.log(`Sorting ${numRows} rows by column B (VehicleReg)...`);
+    Logger.log(`Sorting ${numRows} rows by column B (Code)...`);
 
     // Define the range to sort (columns A-M only, starting from row 2)
     // This includes data (A-G) and formulas (H-M) so they stay together
@@ -699,10 +699,10 @@ function sortDataByColumnB(sheet, startRow, numRows) {
     const lastRow = startRow + numRows - 1;
     const sortRange = sheet.getRange(startRow, 1, numRows, 13); // A-M is 13 columns
 
-    // Sort by column B (which is column 2), ascending (A-Z)
+    // Sort by column B (which is column 2 = Code), ascending (A-Z)
     sortRange.sort({column: 2, ascending: true});
 
-    Logger.log(`Sorted ${numRows} rows by column B (VehicleReg) A-Z (columns A-M only)`);
+    Logger.log(`Sorted ${numRows} rows by column B (Code) A-Z (columns A-M only)`);
 
     // After sorting, trim ALL empty rows in the entire sheet (including template empty rows)
     trimEmptyRows(sheet);
@@ -783,7 +783,7 @@ function detectAndHighlightChanges(oldSheet, newSheet) {
     // Store ALL occurrences since there might be duplicate codes
     const oldFlights = {};
     oldData.forEach((row, index) => {
-      const code = row[1] ? row[1].toString().trim() : ''; // Column B (VehicleReg)
+      const code = row[1] ? row[1].toString().trim() : ''; // Column B (Code - flight number)
       if (code) {
         // Create a unique key combining code and other fields for accurate matching
         const rowKey = createRowKey(row);
@@ -793,7 +793,7 @@ function detectAndHighlightChanges(oldSheet, newSheet) {
 
     const newFlights = {};
     newData.forEach((row, index) => {
-      const code = row[1] ? row[1].toString().trim() : ''; // Column B (VehicleReg)
+      const code = row[1] ? row[1].toString().trim() : ''; // Column B (Code - flight number)
       if (code) {
         const rowKey = createRowKey(row);
         newFlights[rowKey] = { row: row, rowIndex: index + 2, code: code };
