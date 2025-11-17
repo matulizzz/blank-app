@@ -476,20 +476,22 @@ function formatSheetDate(dateStr) {
       date = new Date(dateStr);
     }
 
-    // Format as DDMMM (like "29SEP")
+    // Format as DDMMMYY (like "17NOV25", "19NOV26")
     const monthNames = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN',
                         'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
     const day = String(date.getDate()).padStart(2, '0');
     const month = monthNames[date.getMonth()];
+    const year = String(date.getFullYear()).slice(-2); // Get last 2 digits of year
 
-    return `${day}${month}`;
+    return `${day}${month}${year}`;
 
   } catch (error) {
     Logger.log(`Error formatting date: ${error}`);
     const now = new Date();
     const monthNames = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN',
                         'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
-    return `${String(now.getDate()).padStart(2, '0')}${monthNames[now.getMonth()]}`;
+    const year = String(now.getFullYear()).slice(-2);
+    return `${String(now.getDate()).padStart(2, '0')}${monthNames[now.getMonth()]}${year}`;
   }
 }
 
@@ -1003,8 +1005,8 @@ function setupEmailTrigger() {
     "Your flight schedule import script is now active!\n\n" +
     "✅ Smart email monitoring:\n" +
     "   - Every 5 minutes between 17:00-22:00 UTC (frequent check window)\n" +
-    "   - Every 1 hour during rest of the day\n" +
-    "✅ Weekly health check: Every Monday at 8 AM\n" +
+    "   - Every 30 minutes during rest of the day\n" +
+    "✅ Weekly health check: Every Monday at 8 AM (silent unless errors detected)\n" +
     "✅ Daily cleanup: Removes old sheets automatically\n" +
     "   - '_old_' sheets deleted after 5 days\n" +
     "   - Regular sheets deleted after 90 days\n\n" +
@@ -1013,12 +1015,13 @@ function setupEmailTrigger() {
     "2. Within 5-60 minutes, the script will automatically process it\n" +
     "3. A new sheet will be created in your TESTAVIMAS spreadsheet\n" +
     "4. Changes from previous version will be highlighted\n\n" +
-    "You'll receive notifications for:\n" +
+    "You'll receive notifications ONLY for:\n" +
     "- Schedule changes (new/modified/removed flights)\n" +
     "- Authorization issues (requires immediate action)\n" +
     "- Import errors\n" +
-    "- Weekly status updates\n" +
-    "- Sheet cleanup actions"
+    "- Health check failures\n" +
+    "- Sheet cleanup actions\n\n" +
+    "No spam emails - you'll only be notified when action is needed!"
   );
 
   Logger.log(`Setup confirmation email sent to: ${recipient}`);
@@ -1130,7 +1133,7 @@ function cleanupOldSheets() {
           }
         }
       }
-      // Check regular sheets (like "28SEP", "29SEP")
+      // Check regular sheets (like "17NOV25", "19NOV26")
       else {
         const createdDateStr = scriptProperties.getProperty(`sheet_${sheetName}`);
         if (createdDateStr) {
@@ -1268,52 +1271,17 @@ function weeklyHealthCheck() {
 
     // Check triggers are active
     const triggers = ScriptApp.getProjectTriggers();
-    const mainTrigger = triggers.find(t => t.getHandlerFunction() === 'processFlightScheduleEmails');
+    const mainTrigger = triggers.find(t => t.getHandlerFunction() === 'processFlightScheduleEmailsSmart');
 
     if (!mainTrigger) {
       throw new Error("Main trigger not found! Email monitoring is not active.");
     }
 
-    // Count recent imports (sheets created in last 7 days)
-    const sheets = ss.getSheets();
-    const oneWeekAgo = new Date();
-    oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
-
-    let recentSheets = 0;
-    sheets.forEach(sheet => {
-      const created = new Date(sheet.getSheetId()); // Approximation
-      // Count sheets that aren't 'template' and might be recent
-      if (sheet.getName() !== CONFIG.templateSheetName &&
-          !sheet.getName().includes('_old_')) {
-        recentSheets++;
-      }
-    });
-
-    // Send weekly status email
-    const subject = "✅ Flight Schedule Import - Weekly Status";
-    const body = `Weekly health check completed successfully!
-
-📊 Status: All systems operational
-✅ Authorization: Valid
-✅ Triggers: Active
-📅 Monitoring: Running every 10 minutes
-
-📈 Statistics:
-- Active sheets in spreadsheet: ${sheets.length}
-- Template sheet: ${CONFIG.templateSheetName}
-
-🔧 Configuration:
-- Gmail label: ${CONFIG.gmailLabel}
-- Spreadsheet: ${ss.getName()}
-- Next check: Next Monday at 8 AM
-
-Everything is working correctly. No action required.
-
----
-This is an automated weekly status email. To disable, set CONFIG.sendWeeklyStatus = false`;
-
-    GmailApp.sendEmail(recipient, subject, body);
+    // All checks passed - log success but don't send email
     Logger.log("Weekly health check completed successfully");
+    Logger.log("Authorization: Valid");
+    Logger.log("Main trigger: Active");
+    Logger.log("No issues detected - no email notification sent");
 
   } catch (error) {
     Logger.log("Weekly health check failed: " + error.toString());
