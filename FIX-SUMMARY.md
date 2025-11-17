@@ -111,7 +111,7 @@ After running an import, verify:
 
 - [ ] Column A = Flight Date (LegDate)
 - [ ] Column B = Flight Code (like "BA123", "LH456") ← Code from CSV
-- [ ] Column C = Aircraft Registration (like "G-ABCD", "N12345") ← VehicleRegistration from CSV
+- [ ] Column C = Aircraft Registration (like "LYAAA", "LYBBB", "9HMMM", "7OMMM") ← VehicleRegistration from CSV
 - [ ] Column D = Departure Airport
 - [ ] Column E = Arrival Airport
 - [ ] Column F = Departure Time
@@ -123,7 +123,9 @@ After running an import, verify:
 - Code, Flight Code, Flight, Flight Number, Flight No
 
 ### Aircraft Registration (Column C):
-- VehicleReg, Vehicle Reg, Registration, Reg, Aircraft, AC Reg, Tail, Tail Number
+- VehicleReg, VehicleRegistration, Vehicle Reg, Vehicle Registration
+- Registration, Reg, Aircraft, AircraftReg, Aircraft Reg, AC Reg
+- Tail, Tail Number
 
 ### Date (Column A):
 - LegDate, Leg Date, Date, Flight Date
@@ -175,16 +177,16 @@ If your email/CSV actually has Registration in column 3 and Code in column 2:
 
 ### Column Mapping Flow
 ```
-Source CSV/Email Headers
+Source CSV/Email Headers (e.g., "Code", "VehicleRegistration")
   ↓ (normalize + match aliases)
-Flight Data Object { VehicleReg: "G-ABCD", Code: "BA123", ... }
+Flight Data Object { VehicleReg: "LYAAA", Code: "BA123", ... }
   ↓ (use CONFIG.columnMapping)
-Sheet Columns { B: "BA123", C: "G-ABCD", ... }
+Sheet Columns { B: "BA123", C: "LYAAA", ... }
 ```
 
 **Corrected Mapping:**
-- Code (BA123) → Column B
-- VehicleReg (G-ABCD) → Column C
+- Code (BA123, LH456) → Column B
+- VehicleReg (LYAAA, 9HMMM) → Column C
 
 The fix ensures step 1 (matching) is accurate, so the rest flows correctly.
 
@@ -200,11 +202,11 @@ Please check your source data and answer these:
    - This should go to Column B
 
 3. **Which column should contain aircraft registration?**
-   - Examples: "G-ABCD", "N12345", "LY-ABC"
+   - Examples: "LYAAA", "LYBBB", "9HMMM", "7OMMM"
    - This should go to Column C
 
 4. **Are they currently being switched?**
-   - If Column B shows "G-ABCD" instead of "BA123", they're switched
+   - If Column B shows "LYAAA" instead of "BA123", they're switched
    - The fix should resolve this
 
 ## Contact

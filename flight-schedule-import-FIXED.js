@@ -58,12 +58,16 @@ const CONFIG = {
     // VehicleReg variations (Aircraft Registration)
     "VehicleReg": "VehicleReg",
     "Vehicle Reg": "VehicleReg",
+    "VehicleRegistration": "VehicleReg",
+    "Vehicle Registration": "VehicleReg",
     "Registration": "VehicleReg",
     "Reg": "VehicleReg",
     "Aircraft": "VehicleReg",
     "AC Reg": "VehicleReg",
     "Tail": "VehicleReg",
     "Tail Number": "VehicleReg",
+    "AircraftReg": "VehicleReg",
+    "Aircraft Reg": "VehicleReg",
 
     // Code variations (Flight Code)
     "Code": "Code",
