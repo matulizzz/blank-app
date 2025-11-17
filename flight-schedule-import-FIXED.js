@@ -1270,7 +1270,7 @@ function weeklyHealthCheck() {
 
     // Check triggers are active
     const triggers = ScriptApp.getProjectTriggers();
-    const mainTrigger = triggers.find(t => t.getHandlerFunction() === 'processFlightScheduleEmails');
+    const mainTrigger = triggers.find(t => t.getHandlerFunction() === 'processFlightScheduleEmailsSmart');
 
     if (!mainTrigger) {
       throw new Error("Main trigger not found! Email monitoring is not active.");
