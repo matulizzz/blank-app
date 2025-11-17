@@ -60,15 +60,20 @@ function checkUrgentFlightUpdates() {
       // THEN: Read status column (formulas will have recalculated)
       const statusCol = columnLetterToIndex(ALERT_CONFIG.statusColumn);
       const statusRange = sheet.getRange(2, statusCol, lastRow - 1, 1).getValues();
-      const flightData = sheet.getRange(2, 1, lastRow - 1, 7).getValues(); // A-G
+      const flightData = sheet.getRange(2, 1, lastRow - 1, 9).getValues(); // A-I (includes Column I)
 
       // Find urgent flights
       for (let i = 0; i < statusRange.length; i++) {
         const status = statusRange[i][0];
+        const row = flightData[i];
+        const updatedIndicator = row[8]; // Column I (index 8 in 0-based array)
+
+        // Skip if flight has already been updated (Column I = "Y")
+        if (updatedIndicator === "Y" || updatedIndicator === "y") {
+          continue;
+        }
 
         if (status && status.toString().includes(ALERT_CONFIG.urgentKeyword)) {
-          const row = flightData[i];
-
           // Only add if we have valid data
           if (row[0] && row[1]) { // Check date and code exist
             urgentFlights.push({
@@ -177,6 +182,7 @@ function setupUrgentUpdateAlerts() {
   const body = `Your urgent flight plan update alert system is now active!\n\n` +
     `⏰ Check frequency: Every ${ALERT_CONFIG.checkIntervalMinutes} minutes (optimized)\n` +
     `📝 Status uses FORMULAS in Column ${ALERT_CONFIG.statusColumn} (you control the logic!)\n` +
+    `✅ Smart skip: Ignores flights with "Y" in Column I (already updated)\n` +
     `🚨 Alert trigger: "${ALERT_CONFIG.urgentKeyword}"\n` +
     `📧 Notifications sent to: ${recipient}\n` +
     `📊 Status column: Column ${ALERT_CONFIG.statusColumn}\n` +
@@ -188,20 +194,29 @@ function setupUrgentUpdateAlerts() {
     `• Every ${ALERT_CONFIG.checkIntervalMinutes} minutes: Script updates cells O2 (date) and N3 (time)\n` +
     `• Your formulas in Column ${ALERT_CONFIG.statusColumn} recalculate automatically\n` +
     `• Script reads Column ${ALERT_CONFIG.statusColumn} for "${ALERT_CONFIG.urgentKeyword}" status\n` +
+    `• Flights with "Y" in Column I are skipped (already updated)\n` +
     `• You receive an email with urgent flight details\n` +
     `• Alert means: Update flight plan NOW (within 3h of departure)\n\n` +
     `Formula to use in Column ${ALERT_CONFIG.statusColumn} (starting at ${ALERT_CONFIG.statusColumn}2):\n` +
-    `=FLIGHT_UPDATE_STATUS(A2, F2, $O$2, $N$3)\n\n` +
+    `=FLIGHT_UPDATE_STATUS(A2, F2, I2, $O$2, $N$3)\n\n` +
+    `Where:\n` +
+    `• A2 = Flight date\n` +
+    `• F2 = STD time\n` +
+    `• I2 = Updated indicator (put "Y" when flight plan updated)\n` +
+    `• O2 = Today's date (auto-updated by script)\n` +
+    `• N3 = Current time (auto-updated by script)\n\n` +
     `Formula logic:\n` +
+    `• Returns ":)" if Column I = "Y" (flight already updated)\n` +
     `• Flight plans must be updated STD-4 hours\n` +
     `• Different update windows based on departure time\n` +
     `• All times in UTC timezone\n` +
     `• Handles overnight flights correctly (e.g., 23:00→02:00)\n\n` +
     `─────────────────────────────────────────\n\n` +
     `Setup:\n` +
-    `• Put formula in Column ${ALERT_CONFIG.statusColumn}2: =FLIGHT_UPDATE_STATUS(A2, F2, $O$2, $N$3)\n` +
+    `• Put formula in Column ${ALERT_CONFIG.statusColumn}2: =FLIGHT_UPDATE_STATUS(A2, F2, I2, $O$2, $N$3)\n` +
     `• Copy formula down to all flight rows\n` +
     `• Cells O2 and N3 will be automatically updated by the script\n` +
+    `• When you update a flight plan, put "Y" in Column I for that row\n` +
     `• Script runs in background even when sheet is closed\n\n` +
     `Configuration:\n` +
     `• To disable: Set ALERT_CONFIG.enabled = false\n` +
@@ -238,25 +253,33 @@ function testUrgentFlightAlerts() {
 /**
  * Calculates when a flight plan needs to be updated
  * Handles overnight flights correctly
+ * Returns ":)" if flight has already been updated (Column I = "Y")
  *
- * USE IN SHEET: =FLIGHT_UPDATE_STATUS(A2, F2, $O$2, $N$3)
+ * USE IN SHEET: =FLIGHT_UPDATE_STATUS(A2, F2, I2, $O$2, $N$3)
  * Where:
  *   A2 = Flight date
  *   F2 = STD time
+ *   I2 = Updated indicator ("Y" means already updated)
  *   O2 = Today's date (updated by script)
  *   N3 = Current time (updated by script)
  *
  * @param {Date} flightDate - Flight date (e.g., from Column A)
  * @param {number|Date} stdTime - Scheduled departure time (from Column F)
+ * @param {string} updatedIndicator - "Y" if flight already updated (from Column I)
  * @param {Date} todayDate - Current date (from Cell O2, updated by script)
  * @param {Date} currentTime - Current time (from Cell N3, updated by script)
  * @return {string} Update status
  * @customfunction
  */
-function FLIGHT_UPDATE_STATUS(flightDate, stdTime, todayDate, currentTime) {
+function FLIGHT_UPDATE_STATUS(flightDate, stdTime, updatedIndicator, todayDate, currentTime) {
   try {
     // Handle empty or invalid inputs
     if (!flightDate || !stdTime) return ":)";
+
+    // If flight has already been updated, no need to check
+    if (updatedIndicator === "Y" || updatedIndicator === "y") {
+      return ":)";
+    }
 
     // Convert dates to Date objects if needed
     const fDate = flightDate instanceof Date ? flightDate : new Date(flightDate);
