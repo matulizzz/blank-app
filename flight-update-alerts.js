@@ -30,6 +30,8 @@ function checkUrgentFlightUpdates() {
 
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const sheets = ss.getSheets();
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()); // Date without time
 
   let urgentFlights = [];
 
@@ -47,22 +49,25 @@ function checkUrgentFlightUpdates() {
     if (lastRow < 2) return; // No data
 
     try {
-      // FIRST: Update cell N3 with current time to force formula recalculation
-      const now = new Date();
-      sheet.getRange('N3').setValue(now);
-
-      // THEN: Get status column (column K) - formulas will have just recalculated
-      const statusCol = columnLetterToIndex(ALERT_CONFIG.statusColumn);
-      const statusRange = sheet.getRange(2, statusCol, lastRow - 1, 1).getValues();
+      // Get flight data: Column A (date), Column F (STD time)
       const flightData = sheet.getRange(2, 1, lastRow - 1, 7).getValues(); // A-G
+      const statusCol = columnLetterToIndex(ALERT_CONFIG.statusColumn);
 
-      // Find urgent flights
-      for (let i = 0; i < statusRange.length; i++) {
-        const status = statusRange[i][0];
+      // Array to hold calculated statuses
+      const calculatedStatuses = [];
 
-        if (status && status.toString().includes(ALERT_CONFIG.urgentKeyword)) {
-          const row = flightData[i];
+      // Calculate status for each flight
+      for (let i = 0; i < flightData.length; i++) {
+        const row = flightData[i];
+        const flightDate = row[0]; // Column A
+        const stdTime = row[5];    // Column F
 
+        // Calculate status
+        const status = calculateFlightUpdateStatus(flightDate, stdTime, today, now);
+        calculatedStatuses.push([status]);
+
+        // Check if urgent
+        if (status && status.includes(ALERT_CONFIG.urgentKeyword)) {
           // Only add if we have valid data
           if (row[0] && row[1]) { // Check date and code exist
             urgentFlights.push({
@@ -78,6 +83,12 @@ function checkUrgentFlightUpdates() {
           }
         }
       }
+
+      // Write all calculated statuses to Column K at once (efficient batch write)
+      if (calculatedStatuses.length > 0) {
+        sheet.getRange(2, statusCol, calculatedStatuses.length, 1).setValues(calculatedStatuses);
+      }
+
     } catch (error) {
       Logger.log(`Error checking sheet ${sheetName}: ${error.toString()}`);
     }
@@ -89,6 +100,77 @@ function checkUrgentFlightUpdates() {
     sendUrgentUpdateAlert(urgentFlights);
   } else {
     Logger.log("No urgent flight updates needed at this time");
+  }
+}
+
+// ============================================
+// CALCULATE FLIGHT UPDATE STATUS (Internal function)
+// ============================================
+function calculateFlightUpdateStatus(flightDate, stdTime, todayDate, currentTime) {
+  try {
+    // Handle empty or invalid inputs
+    if (!flightDate || !stdTime) return ":)";
+
+    // Convert dates to Date objects if needed
+    const fDate = flightDate instanceof Date ? flightDate : new Date(flightDate);
+    const tDate = todayDate instanceof Date ? todayDate : new Date(todayDate);
+
+    // Calculate days difference
+    const daysDiff = Math.floor((fDate - tDate) / (1000 * 60 * 60 * 24));
+
+    // Convert times to hours (handle both time formats)
+    let stdHours = 0;
+    let currentHours = 0;
+
+    if (typeof stdTime === 'number') {
+      stdHours = stdTime * 24; // Excel time format (0-1)
+    } else if (stdTime instanceof Date) {
+      stdHours = stdTime.getHours() + stdTime.getMinutes() / 60;
+    }
+
+    if (typeof currentTime === 'number') {
+      currentHours = currentTime * 24;
+    } else if (currentTime instanceof Date) {
+      currentHours = currentTime.getUTCHours() + currentTime.getUTCMinutes() / 60;
+    }
+
+    // Calculate total hours until departure (handles overnight flights)
+    const hoursUntil = (daysDiff * 24) + (stdHours - currentHours);
+
+    // URGENT: Less than 3 hours
+    if (hoursUntil < 3 && hoursUntil >= 0) {
+      return "ATNAUJINTI DABAR!!!!";
+    }
+
+    // TOO FAR: More than 24 hours or not today
+    if (hoursUntil > 24 || daysDiff > 0) {
+      return "TOLI";
+    }
+
+    // Determine update window based on STD time
+    let updateHour;
+    if (stdHours >= 7.167 && stdHours < 13.167) { // 07:10-13:10
+      updateHour = 4.083; // 04:05
+    } else if (stdHours >= 13.167 && stdHours < 19.167) { // 13:10-19:10
+      updateHour = 10.083; // 10:05
+    } else if (stdHours >= 19.167) { // 19:10-00:00
+      updateHour = 16.083; // 16:05
+    } else if (stdHours < 1.167) { // 00:00-01:10
+      updateHour = 16.083; // 16:05
+    } else { // 01:10-07:10
+      updateHour = 22.083; // 22:05
+    }
+
+    // Check if we're in update window
+    if (currentHours >= updateHour) {
+      return "ATNAUJINTI";
+    } else {
+      const hoursRemaining = updateHour - currentHours;
+      return "ATNAUJINTI UZ " + hoursRemaining.toFixed(1) + " VAL";
+    }
+
+  } catch (error) {
+    return "ERROR: " + error.toString();
   }
 }
 
@@ -171,27 +253,30 @@ function setupUrgentUpdateAlerts() {
 
   const body = `Your urgent flight plan update alert system is now active!\n\n` +
     `⏰ Check frequency: Every ${ALERT_CONFIG.checkIntervalMinutes} minutes (optimized)\n` +
-    `🔄 Formula refresh: Automatic with each check\n` +
+    `📝 Status calculation: Automatic (no formulas needed in Column ${ALERT_CONFIG.statusColumn}!)\n` +
     `🚨 Alert trigger: "${ALERT_CONFIG.urgentKeyword}"\n` +
     `📧 Notifications sent to: ${recipient}\n` +
-    `📊 Status column monitored: Column ${ALERT_CONFIG.statusColumn}\n` +
+    `📊 Status column: Column ${ALERT_CONFIG.statusColumn}\n` +
     `⚠️  Max alerts per email: ${ALERT_CONFIG.maxAlertsPerCheck} flights\n\n` +
-    `💡 Quota-efficient: Single trigger refreshes formulas + checks status\n` +
+    `💡 Quota-efficient: Single trigger calculates + writes status + checks for alerts\n` +
     `📊 Usage: ~${checksPerDay} checks/day (~${estimatedMinutes} min of daily 90-min quota)\n\n` +
     `─────────────────────────────────────────\n\n` +
     `How it works:\n` +
-    `• Every ${ALERT_CONFIG.checkIntervalMinutes} minutes: Updates current time cell (N3)\n` +
-    `• This forces FLIGHT_UPDATE_STATUS() to recalculate\n` +
-    `• System then checks all sheets for urgent status\n` +
-    `• When status shows "${ALERT_CONFIG.urgentKeyword}"\n` +
-    `• You receive an email with flight details\n` +
+    `• Every ${ALERT_CONFIG.checkIntervalMinutes} minutes: Script calculates flight update status\n` +
+    `• Writes status values directly to Column ${ALERT_CONFIG.statusColumn} (no formulas!)\n` +
+    `• Checks all sheets for "${ALERT_CONFIG.urgentKeyword}" status\n` +
+    `• You receive an email with urgent flight details\n` +
     `• Alert means: Update flight plan NOW (within 3h of departure)\n\n` +
-    `Your custom function calculates update times based on:\n` +
+    `Status calculation logic:\n` +
     `• Flight plans must be updated STD-4 hours\n` +
     `• Different update windows based on departure time\n` +
     `• All times in UTC timezone\n` +
-    `• Handles overnight flights correctly\n\n` +
+    `• Handles overnight flights correctly (e.g., 23:00→02:00)\n\n` +
     `─────────────────────────────────────────\n\n` +
+    `Setup:\n` +
+    `• Column ${ALERT_CONFIG.statusColumn} will be automatically filled by the script\n` +
+    `• No need to add any formulas - just leave it empty!\n` +
+    `• Script runs in background even when sheet is closed\n\n` +
     `Configuration:\n` +
     `• To disable: Set ALERT_CONFIG.enabled = false\n` +
     `• To change frequency: Set ALERT_CONFIG.checkIntervalMinutes\n` +
@@ -222,114 +307,15 @@ function testUrgentFlightAlerts() {
 }
 
 // ============================================
-// CUSTOM FUNCTION: Calculate Flight Update Status
+// NOTE: Custom Functions Removed
 // ============================================
-/**
- * Calculates when a flight plan needs to be updated
- * Handles overnight flights correctly
- *
- * @param {string|Date} flightDate - Flight date (e.g., "17-Nov-25")
- * @param {number|Date} stdTime - Scheduled departure time
- * @param {string|Date} todayDate - Current date
- * @param {number|Date} currentTime - Current time
- * @return {string} Update status
- * @customfunction
- */
-function FLIGHT_UPDATE_STATUS(flightDate, stdTime, todayDate, currentTime) {
-  try {
-    // Handle empty or invalid inputs
-    if (!flightDate || !stdTime) return ":)";
-
-    // Convert dates to Date objects
-    const fDate = new Date(flightDate);
-    const tDate = new Date(todayDate);
-
-    // Calculate days difference
-    const daysDiff = Math.floor((fDate - tDate) / (1000 * 60 * 60 * 24));
-
-    // Convert times to hours (handle both time formats)
-    let stdHours = 0;
-    let currentHours = 0;
-
-    if (typeof stdTime === 'number') {
-      stdHours = stdTime * 24; // Excel time format
-    } else if (stdTime instanceof Date) {
-      stdHours = stdTime.getHours() + stdTime.getMinutes() / 60;
-    }
-
-    if (typeof currentTime === 'number') {
-      currentHours = currentTime * 24;
-    } else if (currentTime instanceof Date) {
-      currentHours = currentTime.getHours() + currentTime.getMinutes() / 60;
-    }
-
-    // Calculate total hours until departure
-    const hoursUntil = (daysDiff * 24) + (stdHours - currentHours);
-
-    // URGENT: Less than 3 hours
-    if (hoursUntil < 3 && hoursUntil >= 0) {
-      return "ATNAUJINTI DABAR!!!!";
-    }
-
-    // TOO FAR: More than 24 hours or not today
-    if (hoursUntil > 24 || daysDiff > 0) {
-      return "TOLI";
-    }
-
-    // Determine update window based on STD time
-    let updateHour;
-    if (stdHours >= 7.167 && stdHours < 13.167) { // 07:10-13:10
-      updateHour = 4.083; // 04:05
-    } else if (stdHours >= 13.167 && stdHours < 19.167) { // 13:10-19:10
-      updateHour = 10.083; // 10:05
-    } else if (stdHours >= 19.167) { // 19:10-00:00
-      updateHour = 16.083; // 16:05
-    } else if (stdHours < 1.167) { // 00:00-01:10
-      updateHour = 16.083; // 16:05
-    } else { // 01:10-07:10
-      updateHour = 22.083; // 22:05
-    }
-
-    // Check if we're in update window
-    if (currentHours >= updateHour) {
-      return "ATNAUJINTI";
-    } else {
-      const hoursRemaining = updateHour - currentHours;
-      return "ATNAUJINTI UZ " + hoursRemaining.toFixed(1) + " VAL";
-    }
-
-  } catch (error) {
-    return "ERROR: " + error.toString();
-  }
-}
-
-// ============================================
-// CUSTOM FUNCTION: Simple Hours Until Departure
-// ============================================
-/**
- * Calculates hours until flight departure (handles overnight correctly)
- *
- * @param {string|Date} flightDate - Flight date
- * @param {number|Date} stdTime - Scheduled departure time
- * @param {string|Date} todayDate - Current date
- * @param {number|Date} currentTime - Current time
- * @return {number} Hours until departure
- * @customfunction
- */
-function HOURS_UNTIL_DEPARTURE(flightDate, stdTime, todayDate, currentTime) {
-  try {
-    const fDate = new Date(flightDate);
-    const tDate = new Date(todayDate);
-    const daysDiff = Math.floor((fDate - tDate) / (1000 * 60 * 60 * 24));
-
-    let stdHours = typeof stdTime === 'number' ? stdTime * 24 : stdTime.getHours() + stdTime.getMinutes() / 60;
-    let currentHours = typeof currentTime === 'number' ? currentTime * 24 : currentTime.getHours() + currentTime.getMinutes() / 60;
-
-    return (daysDiff * 24) + (stdHours - currentHours);
-  } catch (error) {
-    return -1;
-  }
-}
+// The old FLIGHT_UPDATE_STATUS() and HOURS_UNTIL_DEPARTURE() custom functions
+// have been removed because:
+// 1. Google Sheets doesn't allow custom functions to reference cells with NOW()
+// 2. The script now calculates and writes status directly to Column K
+// 3. This is more efficient and avoids the volatile function limitation
+//
+// No formulas needed in Column K - the script handles everything automatically!
 
 // ============================================
 // HELPER FUNCTIONS
