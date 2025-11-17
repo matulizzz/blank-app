@@ -109,6 +109,43 @@ const CONFIG = {
 };
 
 // ============================================
+// CREATE CUSTOM MENU
+// ============================================
+function onOpen() {
+  SpreadsheetApp.getUi()
+    .createMenu('Flight Schedule Tools')
+    .addItem('▶️ Run Import Now', 'runImportNow')
+    .addToUi();
+}
+
+// ============================================
+// RUN IMPORT NOW - Manual trigger from menu
+// ============================================
+function runImportNow() {
+  const ui = SpreadsheetApp.getUi();
+
+  // Ask for confirmation
+  const confirm = ui.alert(
+    'Run Import Now',
+    'Check for new flight schedule emails and import them?',
+    ui.ButtonSet.YES_NO
+  );
+
+  // Exit if user cancels
+  if (confirm !== ui.Button.YES) {
+    return;
+  }
+
+  // Run the import and show result
+  try {
+    processFlightScheduleEmails();
+    ui.alert('✅ Import Complete', 'Flight schedules imported successfully!', ui.ButtonSet.OK);
+  } catch (error) {
+    ui.alert('❌ Import Failed', error.toString(), ui.ButtonSet.OK);
+  }
+}
+
+// ============================================
 // MAIN FUNCTION - Run this daily
 // ============================================
 function processFlightScheduleEmails() {
