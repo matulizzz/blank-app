@@ -312,8 +312,13 @@ function FLIGHT_UPDATE_STATUS(flightDate, stdTime, updatedIndicator, todayDate, 
       return "ATNAUJINTI DABAR!!!!";
     }
 
-    // TOO FAR: More than 24 hours or different day
-    if (hoursUntil > 24 || daysDiff > 0) {
+    // TOO FAR: More than 24 hours (hoursUntil already accounts for day difference)
+    if (hoursUntil > 24) {
+      return "TOLI";
+    }
+
+    // Flight in the past
+    if (hoursUntil < 0) {
       return "TOLI";
     }
 
