@@ -124,18 +124,6 @@ function onOpen() {
 function runImportNow() {
   const ui = SpreadsheetApp.getUi();
 
-  // Ask for confirmation
-  const confirm = ui.alert(
-    'Run Import Now',
-    'Check for new flight schedule emails and import them?',
-    ui.ButtonSet.YES_NO
-  );
-
-  // Exit if user cancels
-  if (confirm !== ui.Button.YES) {
-    return;
-  }
-
   // Run the import and show result
   try {
     processFlightScheduleEmails();
