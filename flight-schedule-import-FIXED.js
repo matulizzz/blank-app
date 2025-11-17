@@ -115,13 +115,6 @@ function onOpen() {
   const ui = SpreadsheetApp.getUi();
   ui.createMenu('Flight Schedule Tools')
     .addItem('▶️ Run Import Now', 'manualImport')
-    .addSeparator()
-    .addItem('📊 Check Last Import Status', 'showLastImportStatus')
-    .addItem('🔍 Debug: Check Last Email', 'debugCheckLastEmail')
-    .addSeparator()
-    .addItem('🗑️ Clean Up Old Sheets Now', 'manualCleanup')
-    .addItem('👁️ Show Template Sheet', 'unhideTemplateSheet')
-    .addItem('🔒 Hide Template Sheet', 'hideTemplateSheet')
     .addToUi();
 
   Logger.log("Custom menu created");
@@ -153,78 +146,6 @@ function manualImport() {
 
     } catch (error) {
       ui.alert('Import Failed', 'An error occurred during import:\n\n' + error.toString() + '\n\nCheck the script logs for details.', ui.ButtonSet.OK);
-    }
-  }
-}
-
-// ============================================
-// SHOW LAST IMPORT STATUS
-// ============================================
-function showLastImportStatus() {
-  const ui = SpreadsheetApp.getUi();
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const scriptProperties = PropertiesService.getScriptProperties();
-
-  // Get all sheets (excluding template)
-  const sheets = ss.getSheets().filter(s => s.getName() !== CONFIG.templateSheetName);
-
-  if (sheets.length === 0) {
-    ui.alert('No Imports Found', 'No flight schedule sheets found yet.\n\nUse "Run Import Now" to process emails.', ui.ButtonSet.OK);
-    return;
-  }
-
-  // Sort by name (most recent first based on date format)
-  sheets.sort((a, b) => b.getName().localeCompare(a.getName()));
-
-  // Get the most recent non-old sheet
-  const recentSheet = sheets.find(s => !s.getName().includes('_old_'));
-
-  if (!recentSheet) {
-    ui.alert('No Active Sheets', 'Only old/archived sheets found.', ui.ButtonSet.OK);
-    return;
-  }
-
-  const sheetName = recentSheet.getName();
-  const createdDate = scriptProperties.getProperty(`sheet_${sheetName}`);
-  const rowCount = recentSheet.getLastRow() - 1; // Subtract header row
-
-  let message = `📊 Last Import Status\n\n`;
-  message += `Sheet: ${sheetName}\n`;
-  message += `Flights: ${rowCount}\n`;
-  if (createdDate) {
-    message += `Created: ${new Date(createdDate).toLocaleString()}\n`;
-  }
-
-  // Check for old versions
-  const oldVersions = sheets.filter(s => s.getName().startsWith(`${sheetName}_old_`));
-  if (oldVersions.length > 0) {
-    message += `\nRevisions: ${oldVersions.length} previous version(s) found`;
-  }
-
-  ui.alert('Last Import Status', message, ui.ButtonSet.OK);
-}
-
-// ============================================
-// MANUAL CLEANUP (triggered from menu)
-// ============================================
-function manualCleanup() {
-  const ui = SpreadsheetApp.getUi();
-
-  const response = ui.alert(
-    'Clean Up Old Sheets',
-    'This will delete old sheets according to retention settings:\n\n' +
-    `• "_old_" sheets older than ${CONFIG.oldSheetRetentionDays} days\n` +
-    `• Regular sheets older than ${CONFIG.regularSheetRetentionDays} days\n\n` +
-    'Do you want to continue?',
-    ui.ButtonSet.YES_NO
-  );
-
-  if (response == ui.Button.YES) {
-    try {
-      cleanupOldSheets();
-      ui.alert('Cleanup Complete', 'Old sheets have been cleaned up successfully.', ui.ButtonSet.OK);
-    } catch (error) {
-      ui.alert('Cleanup Failed', 'An error occurred:\n\n' + error.toString(), ui.ButtonSet.OK);
     }
   }
 }
