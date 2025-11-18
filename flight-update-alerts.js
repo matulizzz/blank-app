@@ -270,6 +270,93 @@ function sendTeamsAlert(flights) {
 }
 
 // ============================================
+// CALCULATE FLIGHT UPDATE STATUS (Internal function for script)
+// ============================================
+function calculateFlightUpdateStatus(flightDate, stdTime, updatedIndicator, todayDate, currentTime) {
+  try {
+    // Handle empty or invalid inputs
+    if (!flightDate || !stdTime) return ":)";
+
+    // If flight has already been updated, no need to check
+    if (updatedIndicator === "Y" || updatedIndicator === "y") {
+      return ":)";
+    }
+
+    // Convert dates to Date objects if needed
+    const fDate = flightDate instanceof Date ? flightDate : new Date(flightDate);
+    const tDate = todayDate instanceof Date ? todayDate : new Date(todayDate);
+
+    // Calculate days difference
+    const daysDiff = Math.floor((fDate - tDate) / (1000 * 60 * 60 * 24));
+
+    // Convert times to hours (handle both time formats)
+    let stdHours = 0;
+    let currentHours = 0;
+
+    if (typeof stdTime === 'number') {
+      stdHours = stdTime * 24; // Excel time format (0-1)
+    } else if (stdTime instanceof Date) {
+      stdHours = stdTime.getUTCHours() + stdTime.getUTCMinutes() / 60;
+    }
+
+    if (typeof currentTime === 'number') {
+      currentHours = currentTime * 24;
+    } else if (currentTime instanceof Date) {
+      currentHours = currentTime.getUTCHours() + currentTime.getUTCMinutes() / 60;
+    }
+
+    // Calculate total hours until departure (handles overnight flights)
+    const hoursUntil = (daysDiff * 24) + (stdHours - currentHours);
+
+    // URGENT: Less than 3 hours
+    if (hoursUntil < 3 && hoursUntil >= 0) {
+      return "ATNAUJINTI DABAR!!!!";
+    }
+
+    // TOO FAR: More than 24 hours (hoursUntil already accounts for day difference)
+    if (hoursUntil > 24) {
+      return "TOLI";
+    }
+
+    // Flight in the past
+    if (hoursUntil < 0) {
+      return "TOLI";
+    }
+
+    // Determine update window based on STD time
+    let updateHour;
+    if (stdHours >= 7.167 && stdHours < 13.167) { // 07:10-13:10
+      updateHour = 4.083; // 04:05
+    } else if (stdHours >= 13.167 && stdHours < 19.167) { // 13:10-19:10
+      updateHour = 10.083; // 10:05
+    } else if (stdHours >= 19.167) { // 19:10-00:00
+      updateHour = 16.083; // 16:05
+    } else if (stdHours < 1.167) { // 00:00-01:10
+      updateHour = 16.083; // 16:05
+    } else { // 01:10-07:10
+      updateHour = 22.083; // 22:05
+    }
+
+    // Check if we're in update window
+    if (currentHours >= updateHour) {
+      return "ATNAUJINTI";
+    } else {
+      const hoursRemaining = updateHour - currentHours;
+
+      // Convert decimal hours to HH:MM format
+      const hours = Math.floor(hoursRemaining);
+      const minutes = Math.round((hoursRemaining - hours) * 60);
+      const timeStr = String(hours).padStart(2, '0') + ':' + String(minutes).padStart(2, '0');
+
+      return "ATNAUJINTI UZ " + timeStr;
+    }
+
+  } catch (error) {
+    return "ERROR: " + error.toString();
+  }
+}
+
+// ============================================
 // SETUP 5-MINUTE URGENT UPDATE ALERTS
 // ============================================
 function setupUrgentUpdateAlerts() {
