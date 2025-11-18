@@ -57,11 +57,12 @@ function checkUrgentFlightUpdates() {
     if (lastRow < 2) return; // No data
 
     try {
-      // FIRST: Update time cells so formulas recalculate
-      // Cell O2 = Today's date (without time)
-      // Cell N3 = Current time (full datetime)
-      sheet.getRange('O2').setValue(new Date(now.getFullYear(), now.getMonth(), now.getDate()));
-      sheet.getRange('N3').setValue(now);
+      // FIRST: Update time cells with formulas (not static values)
+      // This preserves the formulas and ensures they work when sheet is open or closed
+      // Cell O2 = Today's date
+      // Cell N3 = Current time (decimal format 0-1 for time of day)
+      sheet.getRange('O2').setFormula('=TODAY()');
+      sheet.getRange('N3').setFormula('=NOW()-INT(NOW())');
 
       // Small delay to let formulas recalculate
       SpreadsheetApp.flush();
