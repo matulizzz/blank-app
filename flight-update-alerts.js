@@ -13,8 +13,17 @@ const ALERT_CONFIG = {
   enabled: true,
   urgentKeyword: "ATNAUJINTI DABAR!!!!", // Status that triggers urgent alert
   statusColumn: "K", // Column where your formula shows the status
+
+  // Notification method: "email", "teams", or "both"
+  notificationMethod: "email", // Change to "teams" or "both" as needed
+
+  // Email settings
   emailRecipient: "matas.miltakis@heston.aero",
-  maxAlertsPerCheck: 10, // Maximum flights to include in one email
+
+  // Microsoft Teams webhook URL (get from Teams channel settings)
+  teamsWebhookUrl: "", // Paste your webhook URL here
+
+  maxAlertsPerCheck: 10, // Maximum flights to include in one alert
   checkIntervalMinutes: 5 // How often to check (5, 10, 15, or 30 minutes recommended)
   // Note: 5 min = ~288 checks/day, 10 min = ~144 checks/day, 15 min = ~96 checks/day
 };
@@ -48,11 +57,12 @@ function checkUrgentFlightUpdates() {
     if (lastRow < 2) return; // No data
 
     try {
-      // FIRST: Update time cells so formulas recalculate
-      // Cell O2 = Today's date (without time)
-      // Cell N3 = Current time (full datetime)
-      sheet.getRange('O2').setValue(new Date(now.getFullYear(), now.getMonth(), now.getDate()));
-      sheet.getRange('N3').setValue(now);
+      // FIRST: Update time cells with formulas (not static values)
+      // This preserves the formulas and ensures they work when sheet is open or closed
+      // Cell O2 = Today's date
+      // Cell N3 = Current time (decimal format 0-1 for time of day)
+      sheet.getRange('O2').setFormula('=TODAY()');
+      sheet.getRange('N3').setFormula('=NOW()-INT(NOW())');
 
       // Small delay to let formulas recalculate
       SpreadsheetApp.flush();
@@ -104,15 +114,35 @@ function checkUrgentFlightUpdates() {
 }
 
 // ============================================
-// SEND URGENT UPDATE ALERT EMAIL
+// SEND URGENT UPDATE ALERT (ROUTER)
 // ============================================
 function sendUrgentUpdateAlert(flights) {
-  // Limit alerts to prevent overwhelming email
+  // Limit alerts to prevent overwhelming
   if (flights.length > ALERT_CONFIG.maxAlertsPerCheck) {
     Logger.log(`Limiting alert to ${ALERT_CONFIG.maxAlertsPerCheck} flights (found ${flights.length})`);
     flights = flights.slice(0, ALERT_CONFIG.maxAlertsPerCheck);
   }
 
+  // Route to appropriate notification method
+  const method = ALERT_CONFIG.notificationMethod.toLowerCase();
+
+  if (method === "email") {
+    sendEmailAlert(flights);
+  } else if (method === "teams") {
+    sendTeamsAlert(flights);
+  } else if (method === "both") {
+    sendEmailAlert(flights);
+    sendTeamsAlert(flights);
+  } else {
+    Logger.log(`⚠️ Unknown notification method: ${ALERT_CONFIG.notificationMethod}`);
+    Logger.log(`Valid options: "email", "teams", or "both"`);
+  }
+}
+
+// ============================================
+// SEND EMAIL ALERT
+// ============================================
+function sendEmailAlert(flights) {
   const now = new Date();
   const timeStr = Utilities.formatDate(now, 'UTC', 'HH:mm');
 
@@ -147,9 +177,94 @@ function sendUrgentUpdateAlert(flights) {
 
   try {
     GmailApp.sendEmail(ALERT_CONFIG.emailRecipient, subject, body);
-    Logger.log(`✅ Urgent alert email sent to: ${ALERT_CONFIG.emailRecipient}`);
+    Logger.log(`✅ Email alert sent to: ${ALERT_CONFIG.emailRecipient}`);
   } catch (error) {
-    Logger.log(`❌ Failed to send urgent alert email: ${error.toString()}`);
+    Logger.log(`❌ Failed to send email alert: ${error.toString()}`);
+  }
+}
+
+// ============================================
+// SEND MICROSOFT TEAMS ALERT
+// ============================================
+function sendTeamsAlert(flights) {
+  // Validate webhook URL
+  if (!ALERT_CONFIG.teamsWebhookUrl || ALERT_CONFIG.teamsWebhookUrl === "") {
+    Logger.log(`❌ Teams webhook URL not configured. Set ALERT_CONFIG.teamsWebhookUrl`);
+    return;
+  }
+
+  const now = new Date();
+  const timeStr = Utilities.formatDate(now, 'UTC', 'HH:mm');
+
+  // Build Teams adaptive card
+  const card = {
+    "@type": "MessageCard",
+    "@context": "https://schema.org/extensions",
+    "themeColor": "FF6B35", // Orange for urgency
+    "summary": `${flights.length} Flight Plan Update(s) Required NOW`,
+    "sections": [{
+      "activityTitle": "🚨 URGENT: Flight Plan Updates Required",
+      "activitySubtitle": `${flights.length} flight(s) need IMMEDIATE attention`,
+      "facts": [
+        { "name": "Current Time (UTC):", "value": timeStr },
+        { "name": "Update Deadline:", "value": "STD - 4 hours" },
+        { "name": "Urgent Flights:", "value": `${flights.length}` }
+      ],
+      "markdown": true
+    }]
+  };
+
+  // Add each flight as a section
+  flights.forEach((flight, index) => {
+    card.sections.push({
+      "title": `✈️ Flight ${index + 1}: ${formatValue(flight.code)}`,
+      "facts": [
+        { "name": "📅 Date", "value": formatValue(flight.date) },
+        { "name": "🛩️ Registration", "value": formatValue(flight.registration) },
+        { "name": "🛫 Route", "value": `${formatValue(flight.departure)} → ${formatValue(flight.arrival)}` },
+        { "name": "🕐 STD (UTC)", "value": formatTimeValue(flight.std) },
+        { "name": "🕐 STA (UTC)", "value": formatTimeValue(flight.sta) }
+      ],
+      "markdown": true
+    });
+  });
+
+  // Add action button to open spreadsheet
+  card.potentialAction = [{
+    "@type": "OpenUri",
+    "name": "📊 Open Spreadsheet",
+    "targets": [{
+      "os": "default",
+      "uri": SpreadsheetApp.getActiveSpreadsheet().getUrl()
+    }]
+  }];
+
+  // Add footer note
+  if (flights.length === ALERT_CONFIG.maxAlertsPerCheck) {
+    card.sections.push({
+      "text": `⚠️ **Note:** This alert shows the first ${ALERT_CONFIG.maxAlertsPerCheck} urgent flights. There may be more requiring updates. Check the spreadsheet.`,
+      "markdown": true
+    });
+  }
+
+  // Send to Teams
+  const options = {
+    method: 'post',
+    contentType: 'application/json',
+    payload: JSON.stringify(card),
+    muteHttpExceptions: true
+  };
+
+  try {
+    const response = UrlFetchApp.fetch(ALERT_CONFIG.teamsWebhookUrl, options);
+    if (response.getResponseCode() === 200) {
+      Logger.log(`✅ Teams alert sent successfully`);
+    } else {
+      Logger.log(`❌ Teams alert failed with code: ${response.getResponseCode()}`);
+      Logger.log(`Response: ${response.getContentText()}`);
+    }
+  } catch (error) {
+    Logger.log(`❌ Failed to send Teams alert: ${error.toString()}`);
   }
 }
 
@@ -179,14 +294,24 @@ function setupUrgentUpdateAlerts() {
   const checksPerDay = Math.floor(1440 / ALERT_CONFIG.checkIntervalMinutes);
   const estimatedMinutes = Math.floor((checksPerDay * 10) / 60); // Estimate 10 sec per check
 
+  // Determine notification method text
+  let notificationInfo = "";
+  if (ALERT_CONFIG.notificationMethod === "email") {
+    notificationInfo = `📧 Email to: ${recipient}`;
+  } else if (ALERT_CONFIG.notificationMethod === "teams") {
+    notificationInfo = `💬 Microsoft Teams (webhook configured)`;
+  } else if (ALERT_CONFIG.notificationMethod === "both") {
+    notificationInfo = `📧 Email to: ${recipient} + 💬 Microsoft Teams`;
+  }
+
   const body = `Your urgent flight plan update alert system is now active!\n\n` +
     `⏰ Check frequency: Every ${ALERT_CONFIG.checkIntervalMinutes} minutes (optimized)\n` +
     `📝 Status uses FORMULAS in Column ${ALERT_CONFIG.statusColumn} (you control the logic!)\n` +
     `✅ Smart skip: Ignores flights with "Y" in Column I (already updated)\n` +
     `🚨 Alert trigger: "${ALERT_CONFIG.urgentKeyword}"\n` +
-    `📧 Notifications sent to: ${recipient}\n` +
+    `📢 Notifications via: ${notificationInfo}\n` +
     `📊 Status column: Column ${ALERT_CONFIG.statusColumn}\n` +
-    `⚠️  Max alerts per email: ${ALERT_CONFIG.maxAlertsPerCheck} flights\n\n` +
+    `⚠️  Max alerts per check: ${ALERT_CONFIG.maxAlertsPerCheck} flights\n\n` +
     `💡 Quota-efficient: Single trigger updates time cells + checks for alerts\n` +
     `📊 Usage: ~${checksPerDay} checks/day (~${estimatedMinutes} min of daily 90-min quota)\n\n` +
     `─────────────────────────────────────────\n\n` +
@@ -195,7 +320,7 @@ function setupUrgentUpdateAlerts() {
     `• Your formulas in Column ${ALERT_CONFIG.statusColumn} recalculate automatically\n` +
     `• Script reads Column ${ALERT_CONFIG.statusColumn} for "${ALERT_CONFIG.urgentKeyword}" status\n` +
     `• Flights with "Y" in Column I are skipped (already updated)\n` +
-    `• You receive an email with urgent flight details\n` +
+    `• You receive alerts via ${ALERT_CONFIG.notificationMethod}\n` +
     `• Alert means: Update flight plan NOW (within 3h of departure)\n\n` +
     `Formula to use in Column ${ALERT_CONFIG.statusColumn} (starting at ${ALERT_CONFIG.statusColumn}2):\n` +
     `=FLIGHT_UPDATE_STATUS(A2, F2, I2, $O$2, $N$3)\n\n` +
@@ -221,8 +346,16 @@ function setupUrgentUpdateAlerts() {
     `Configuration:\n` +
     `• To disable: Set ALERT_CONFIG.enabled = false\n` +
     `• To change frequency: Set ALERT_CONFIG.checkIntervalMinutes\n` +
+    `• To change notification method: Set ALERT_CONFIG.notificationMethod ("email", "teams", or "both")\n` +
     `• To change email: Update ALERT_CONFIG.emailRecipient\n` +
     `• To change column: Update ALERT_CONFIG.statusColumn\n\n` +
+    `Microsoft Teams Setup:\n` +
+    `1. In Teams, go to your channel → ⋯ → Connectors → Manage\n` +
+    `2. Find "Incoming Webhook" → Configure\n` +
+    `3. Name it "Flight Alerts" and create\n` +
+    `4. Copy the webhook URL\n` +
+    `5. Paste URL into ALERT_CONFIG.teamsWebhookUrl\n` +
+    `6. Set ALERT_CONFIG.notificationMethod = "teams"\n\n` +
     `Spreadsheet: ${SpreadsheetApp.getActiveSpreadsheet().getUrl()}`;
 
   try {
