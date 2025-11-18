@@ -43,12 +43,18 @@ function checkUrgentFlightUpdates() {
 
   let urgentFlights = [];
 
-  // Check all sheets (skip template and old sheets)
+  // Check all sheets (skip template, old, and hidden sheets)
   sheets.forEach(sheet => {
     const sheetName = sheet.getName();
 
     // Skip template and old sheets
     if (sheetName === CONFIG.templateSheetName || sheetName.includes('_old_')) {
+      return;
+    }
+
+    // Skip hidden sheets completely
+    if (sheet.isSheetHidden()) {
+      Logger.log(`Skipping hidden sheet: ${sheetName}`);
       return;
     }
 
