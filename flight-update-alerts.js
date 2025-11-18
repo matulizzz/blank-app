@@ -43,7 +43,7 @@ function checkUrgentFlightUpdates() {
 
   let urgentFlights = [];
 
-  // Check all sheets (skip template and old sheets)
+  // Check all sheets (skip template, old, and hidden sheets)
   sheets.forEach(sheet => {
     const sheetName = sheet.getName();
 
@@ -52,38 +52,39 @@ function checkUrgentFlightUpdates() {
       return;
     }
 
+    // Skip hidden sheets completely
+    if (sheet.isSheetHidden()) {
+      Logger.log(`Skipping hidden sheet: ${sheetName}`);
+      return;
+    }
+
     // Get data from the sheet
     const lastRow = sheet.getLastRow();
     if (lastRow < 2) return; // No data
 
     try {
-      // FIRST: Update time cells with formulas (not static values)
-      // This preserves the formulas and ensures they work when sheet is open or closed
-      // Cell O2 = Today's date
-      // Cell N3 = Current time (decimal format 0-1 for time of day)
-      sheet.getRange('O2').setFormula('=TODAY()');
-      sheet.getRange('N3').setFormula('=NOW()-INT(NOW())');
-
-      // Small delay to let formulas recalculate
-      SpreadsheetApp.flush();
-
-      // THEN: Read status column (formulas will have recalculated)
+      // Get flight data including Column I (updated indicator)
+      const flightData = sheet.getRange(2, 1, lastRow - 1, 9).getValues(); // A-I
       const statusCol = columnLetterToIndex(ALERT_CONFIG.statusColumn);
-      const statusRange = sheet.getRange(2, statusCol, lastRow - 1, 1).getValues();
-      const flightData = sheet.getRange(2, 1, lastRow - 1, 9).getValues(); // A-I (includes Column I)
 
-      // Find urgent flights
-      for (let i = 0; i < statusRange.length; i++) {
-        const status = statusRange[i][0];
+      // Array to hold calculated statuses
+      const calculatedStatuses = [];
+      const now = new Date();
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+      // Calculate status for each flight
+      for (let i = 0; i < flightData.length; i++) {
         const row = flightData[i];
-        const updatedIndicator = row[8]; // Column I (index 8 in 0-based array)
+        const flightDate = row[0];      // Column A
+        const stdTime = row[5];         // Column F
+        const updatedIndicator = row[8]; // Column I
 
-        // Skip if flight has already been updated (Column I = "Y")
-        if (updatedIndicator === "Y" || updatedIndicator === "y") {
-          continue;
-        }
+        // Calculate status using internal function
+        const status = calculateFlightUpdateStatus(flightDate, stdTime, updatedIndicator, today, now);
+        calculatedStatuses.push([status]);
 
-        if (status && status.toString().includes(ALERT_CONFIG.urgentKeyword)) {
+        // Check if urgent (and not already updated)
+        if (status && status.includes(ALERT_CONFIG.urgentKeyword)) {
           // Only add if we have valid data
           if (row[0] && row[1]) { // Check date and code exist
             urgentFlights.push({
@@ -99,6 +100,12 @@ function checkUrgentFlightUpdates() {
           }
         }
       }
+
+      // Write all calculated statuses to Column K at once (efficient batch write)
+      if (calculatedStatuses.length > 0) {
+        sheet.getRange(2, statusCol, calculatedStatuses.length, 1).setValues(calculatedStatuses);
+      }
+
     } catch (error) {
       Logger.log(`Error checking sheet ${sheetName}: ${error.toString()}`);
     }
@@ -265,6 +272,93 @@ function sendTeamsAlert(flights) {
     }
   } catch (error) {
     Logger.log(`❌ Failed to send Teams alert: ${error.toString()}`);
+  }
+}
+
+// ============================================
+// CALCULATE FLIGHT UPDATE STATUS (Internal function for script)
+// ============================================
+function calculateFlightUpdateStatus(flightDate, stdTime, updatedIndicator, todayDate, currentTime) {
+  try {
+    // Handle empty or invalid inputs
+    if (!flightDate || !stdTime) return ":)";
+
+    // If flight has already been updated, no need to check
+    if (updatedIndicator === "Y" || updatedIndicator === "y") {
+      return ":)";
+    }
+
+    // Convert dates to Date objects if needed
+    const fDate = flightDate instanceof Date ? flightDate : new Date(flightDate);
+    const tDate = todayDate instanceof Date ? todayDate : new Date(todayDate);
+
+    // Calculate days difference
+    const daysDiff = Math.floor((fDate - tDate) / (1000 * 60 * 60 * 24));
+
+    // Convert times to hours (handle both time formats)
+    let stdHours = 0;
+    let currentHours = 0;
+
+    if (typeof stdTime === 'number') {
+      stdHours = stdTime * 24; // Excel time format (0-1)
+    } else if (stdTime instanceof Date) {
+      stdHours = stdTime.getUTCHours() + stdTime.getUTCMinutes() / 60;
+    }
+
+    if (typeof currentTime === 'number') {
+      currentHours = currentTime * 24;
+    } else if (currentTime instanceof Date) {
+      currentHours = currentTime.getUTCHours() + currentTime.getUTCMinutes() / 60;
+    }
+
+    // Calculate total hours until departure (handles overnight flights)
+    const hoursUntil = (daysDiff * 24) + (stdHours - currentHours);
+
+    // URGENT: Less than 3 hours
+    if (hoursUntil < 3 && hoursUntil >= 0) {
+      return "ATNAUJINTI DABAR!!!!";
+    }
+
+    // TOO FAR: More than 24 hours (hoursUntil already accounts for day difference)
+    if (hoursUntil > 24) {
+      return "TOLI";
+    }
+
+    // Flight in the past
+    if (hoursUntil < 0) {
+      return "TOLI";
+    }
+
+    // Determine update window based on STD time
+    let updateHour;
+    if (stdHours >= 7.167 && stdHours < 13.167) { // 07:10-13:10
+      updateHour = 4.083; // 04:05
+    } else if (stdHours >= 13.167 && stdHours < 19.167) { // 13:10-19:10
+      updateHour = 10.083; // 10:05
+    } else if (stdHours >= 19.167) { // 19:10-00:00
+      updateHour = 16.083; // 16:05
+    } else if (stdHours < 1.167) { // 00:00-01:10
+      updateHour = 16.083; // 16:05
+    } else { // 01:10-07:10
+      updateHour = 22.083; // 22:05
+    }
+
+    // Check if we're in update window
+    if (currentHours >= updateHour) {
+      return "ATNAUJINTI";
+    } else {
+      const hoursRemaining = updateHour - currentHours;
+
+      // Convert decimal hours to HH:MM format
+      const hours = Math.floor(hoursRemaining);
+      const minutes = Math.round((hoursRemaining - hours) * 60);
+      const timeStr = String(hours).padStart(2, '0') + ':' + String(minutes).padStart(2, '0');
+
+      return "ATNAUJINTI UZ " + timeStr;
+    }
+
+  } catch (error) {
+    return "ERROR: " + error.toString();
   }
 }
 
