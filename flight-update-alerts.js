@@ -57,33 +57,28 @@ function checkUrgentFlightUpdates() {
     if (lastRow < 2) return; // No data
 
     try {
-      // FIRST: Update time cells with formulas (not static values)
-      // This preserves the formulas and ensures they work when sheet is open or closed
-      // Cell O2 = Today's date
-      // Cell N3 = Current time (decimal format 0-1 for time of day)
-      sheet.getRange('O2').setFormula('=TODAY()');
-      sheet.getRange('N3').setFormula('=NOW()-INT(NOW())');
-
-      // Small delay to let formulas recalculate
-      SpreadsheetApp.flush();
-
-      // THEN: Read status column (formulas will have recalculated)
+      // Get flight data including Column I (updated indicator)
+      const flightData = sheet.getRange(2, 1, lastRow - 1, 9).getValues(); // A-I
       const statusCol = columnLetterToIndex(ALERT_CONFIG.statusColumn);
-      const statusRange = sheet.getRange(2, statusCol, lastRow - 1, 1).getValues();
-      const flightData = sheet.getRange(2, 1, lastRow - 1, 9).getValues(); // A-I (includes Column I)
 
-      // Find urgent flights
-      for (let i = 0; i < statusRange.length; i++) {
-        const status = statusRange[i][0];
+      // Array to hold calculated statuses
+      const calculatedStatuses = [];
+      const now = new Date();
+      const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+      // Calculate status for each flight
+      for (let i = 0; i < flightData.length; i++) {
         const row = flightData[i];
-        const updatedIndicator = row[8]; // Column I (index 8 in 0-based array)
+        const flightDate = row[0];      // Column A
+        const stdTime = row[5];         // Column F
+        const updatedIndicator = row[8]; // Column I
 
-        // Skip if flight has already been updated (Column I = "Y")
-        if (updatedIndicator === "Y" || updatedIndicator === "y") {
-          continue;
-        }
+        // Calculate status using internal function
+        const status = calculateFlightUpdateStatus(flightDate, stdTime, updatedIndicator, today, now);
+        calculatedStatuses.push([status]);
 
-        if (status && status.toString().includes(ALERT_CONFIG.urgentKeyword)) {
+        // Check if urgent (and not already updated)
+        if (status && status.includes(ALERT_CONFIG.urgentKeyword)) {
           // Only add if we have valid data
           if (row[0] && row[1]) { // Check date and code exist
             urgentFlights.push({
@@ -99,6 +94,12 @@ function checkUrgentFlightUpdates() {
           }
         }
       }
+
+      // Write all calculated statuses to Column K at once (efficient batch write)
+      if (calculatedStatuses.length > 0) {
+        sheet.getRange(2, statusCol, calculatedStatuses.length, 1).setValues(calculatedStatuses);
+      }
+
     } catch (error) {
       Logger.log(`Error checking sheet ${sheetName}: ${error.toString()}`);
     }
